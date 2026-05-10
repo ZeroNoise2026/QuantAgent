@@ -35,13 +35,29 @@ ChatbotUI/
 - Supabase project with schema applied (see `data-pipeline/pipeline/schema.sql`)
 - Moonshot API key
 
+## Authentication (Supabase Auth)
+
+This app uses Supabase Auth (email + password). Every backend route requires a
+valid `Authorization: Bearer <jwt>` header issued by Supabase.
+
+One-time setup in the Supabase Dashboard:
+
+1. **Authentication → Providers → Email**: enable.
+2. **Authentication → Settings → "Confirm email"**: turn **OFF** for dev (otherwise users can't log in until they click the confirmation email).
+3. **Project Settings → API → JWT Settings**: copy the **JWT Secret** into `backend/.env` as `SUPABASE_JWT_SECRET`.
+4. **Project Settings → API Keys → Publishable**: copy into `frontend/.env.local` as `VITE_SUPABASE_PUBLISHABLE_KEY`.
+5. Run `backend/migrations/002_auth_uuid_rls.sql` in the SQL Editor.
+   ⚠️ This **TRUNCATEs** `chat_sessions`, `chat_messages`, `user_watchlist`,
+   `user_preferences`, `daily_briefings` because the old localStorage user_ids
+   cannot map to real `auth.users.id` rows.
+
 ## Quick Start
 
 ### Backend
 
 ```bash
 cd ChatbotUI/backend
-cp .env.example .env     # fill in credentials
+cp .env.example .env     # fill in credentials (incl. SUPABASE_JWT_SECRET)
 pip install -r requirements.txt
 uvicorn main:app --port 8000 --reload
 ```
@@ -50,8 +66,9 @@ uvicorn main:app --port 8000 --reload
 
 ```bash
 cd ChatbotUI/frontend
+cp .env.example .env.local   # fill in VITE_SUPABASE_URL / PUBLISHABLE_KEY
 npm install
-npm run dev              # http://localhost:3000
+npm run dev                  # http://localhost:3000
 ```
 
 ### Daily Briefing (manual test)

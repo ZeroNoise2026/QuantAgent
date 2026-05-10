@@ -20,7 +20,7 @@ Run:
 
 import logging
 import os
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -28,6 +28,7 @@ from typing import Optional
 
 import db
 import rag
+from auth import get_current_user
 from fetcher import fetch_context
 from summarizer import generate_summary, generate_briefing
 
@@ -54,12 +55,6 @@ app.add_middleware(
 )
 
 
-def _get_user_id(x_user_id: str = Header(None)) -> str:
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="X-User-Id header required")
-    return x_user_id
-
-
 # ── Tickers ───────────────────────────────────────────────────
 
 @app.get("/api/tickers")
@@ -73,20 +68,17 @@ class WatchlistAdd(BaseModel):
     ticker: str
 
 @app.get("/api/watchlist")
-def get_watchlist(x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def get_watchlist(user_id: str = Depends(get_current_user)):
     return db.get_watchlist(user_id)
 
 @app.post("/api/watchlist")
-def add_watchlist(body: WatchlistAdd, x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def add_watchlist(body: WatchlistAdd, user_id: str = Depends(get_current_user)):
     ticker = body.ticker.upper().strip()
     db.add_to_watchlist(user_id, ticker)
     return {"status": "ok", "ticker": ticker}
 
 @app.delete("/api/watchlist/{ticker}")
-def remove_watchlist(ticker: str, x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def remove_watchlist(ticker: str, user_id: str = Depends(get_current_user)):
     db.remove_from_watchlist(user_id, ticker.upper())
     return {"status": "ok"}
 
@@ -98,8 +90,7 @@ class PreferencesUpdate(BaseModel):
     briefing_enabled: bool = True
 
 @app.get("/api/preferences")
-def get_preferences(x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def get_preferences(user_id: str = Depends(get_current_user)):
     try:
         prefs = db.get_preferences(user_id)
     except Exception:
@@ -109,8 +100,7 @@ def get_preferences(x_user_id: str = Header(None)):
     return prefs
 
 @app.put("/api/preferences")
-def update_preferences(body: PreferencesUpdate, x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def update_preferences(body: PreferencesUpdate, user_id: str = Depends(get_current_user)):
     try:
         db.upsert_preferences(user_id, body.timezone, body.briefing_enabled)
     except Exception as e:
@@ -121,16 +111,14 @@ def update_preferences(body: PreferencesUpdate, x_user_id: str = Header(None)):
 # ── Briefings ─────────────────────────────────────────────────
 
 @app.get("/api/briefings")
-def list_briefings(limit: int = 7, x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def list_briefings(limit: int = 7, user_id: str = Depends(get_current_user)):
     try:
         return db.get_briefings(user_id, limit=limit)
     except Exception:
         return []
 
 @app.get("/api/briefings/latest")
-def latest_briefing(x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def latest_briefing(user_id: str = Depends(get_current_user)):
     try:
         briefing = db.get_latest_briefing(user_id)
     except Exception:
@@ -141,9 +129,8 @@ def latest_briefing(x_user_id: str = Header(None)):
 
 
 @app.get("/api/briefings/by-date")
-def briefing_by_date(date: str, x_user_id: str = Header(None)):
+def briefing_by_date(date: str, user_id: str = Depends(get_current_user)):
     """Fetch a briefing for the given YYYY-MM-DD. 404 if no briefing that day."""
-    user_id = _get_user_id(x_user_id)
     try:
         briefing = db.get_briefing_by_date(user_id, date)
     except Exception as e:
@@ -154,13 +141,12 @@ def briefing_by_date(date: str, x_user_id: str = Header(None)):
 
 
 @app.get("/api/briefings/dates")
-def briefing_dates(date_from: str, date_to: str, x_user_id: str = Header(None)):
+def briefing_dates(date_from: str, date_to: str, user_id: str = Depends(get_current_user)):
     """Return list of dates with briefings within [date_from, date_to].
 
     Frontend uses this to grey out days without data in the date picker.
     Both bounds are inclusive, format YYYY-MM-DD.
     """
-    user_id = _get_user_id(x_user_id)
     try:
         dates = db.get_briefing_dates(user_id, date_from, date_to)
     except Exception as e:
@@ -171,9 +157,8 @@ def briefing_dates(date_from: str, date_to: str, x_user_id: str = Header(None)):
 # ── Refresh Briefing (on-demand) ─────────────────────────────
 
 @app.post("/api/briefings/refresh")
-def refresh_briefing(x_user_id: str = Header(None)):
+def refresh_briefing(user_id: str = Depends(get_current_user)):
     """Generate a new briefing right now for the user's watchlist."""
-    user_id = _get_user_id(x_user_id)
     watchlist = db.get_watchlist(user_id)
     tickers = [w["ticker"] for w in watchlist]
     if not tickers:
@@ -209,10 +194,8 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None         # if absent, a new session is created
 
 @app.post("/api/chat/stream")
-def chat_stream(body: ChatRequest, x_user_id: str = Header(None)):
+def chat_stream(body: ChatRequest, user_id: str = Depends(get_current_user)):
     """SSE streaming chat — proxies token stream from question-service, persists messages."""
-    user_id = _get_user_id(x_user_id)
-
     # Resolve or create the session.
     session_id = body.session_id
     is_new_session = False
@@ -283,8 +266,7 @@ def chat_stream(body: ChatRequest, x_user_id: str = Header(None)):
 # ── Chat sessions ─────────────────────────────────────────────
 
 @app.get("/api/chat/sessions")
-def list_sessions(x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def list_sessions(user_id: str = Depends(get_current_user)):
     try:
         return db.list_chat_sessions(user_id)
     except Exception as e:
@@ -292,8 +274,7 @@ def list_sessions(x_user_id: str = Header(None)):
 
 
 @app.get("/api/chat/sessions/{session_id}/messages")
-def get_session_messages(session_id: str, x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def get_session_messages(session_id: str, user_id: str = Depends(get_current_user)):
     # Ownership check
     session = db.get_chat_session(user_id, session_id)
     if not session:
@@ -305,15 +286,13 @@ def get_session_messages(session_id: str, x_user_id: str = Header(None)):
 
 
 @app.delete("/api/chat/sessions/{session_id}")
-def remove_session(session_id: str, x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def remove_session(session_id: str, user_id: str = Depends(get_current_user)):
     db.delete_chat_session(user_id, session_id)
     return {"status": "ok"}
 
 
 @app.delete("/api/chat/sessions")
-def remove_all_sessions(x_user_id: str = Header(None)):
-    user_id = _get_user_id(x_user_id)
+def remove_all_sessions(user_id: str = Depends(get_current_user)):
     count = db.delete_all_chat_sessions(user_id)
     return {"status": "ok", "deleted": count}
 
@@ -324,8 +303,7 @@ class SummarizeRequest(BaseModel):
     ticker: str
 
 @app.post("/api/summarize")
-def summarize(body: SummarizeRequest, x_user_id: str = Header(None)):
-    _get_user_id(x_user_id)
+def summarize(body: SummarizeRequest, user_id: str = Depends(get_current_user)):
     ticker = body.ticker.upper().strip()
     ctx = fetch_context(ticker)
     if ctx.total_chars == 0:

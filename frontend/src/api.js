@@ -1,23 +1,22 @@
 // In dev: Vite proxies '/api' → http://localhost:8000 (see vite.config.js).
 // In prod (Vercel): set VITE_API_URL=https://<cloud-run-backend>.run.app
 // and API calls go directly to the Cloud Run backend.
+import { supabase } from './auth/supabaseClient'
+
 const API_BASE = (import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
   : '/api')
 
-function getUserId() {
-  let id = localStorage.getItem('quantagent_user_id')
-  if (!id) {
-    id = crypto.randomUUID()
-    localStorage.setItem('quantagent_user_id', id)
-  }
-  return id
+async function getAccessToken() {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.access_token ?? null
 }
 
 async function request(path, options = {}) {
+  const token = await getAccessToken()
   const headers = {
     'Content-Type': 'application/json',
-    'X-User-Id': getUserId(),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   }
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
@@ -63,11 +62,12 @@ export const api = {
     } = opts
     const controller = new AbortController()
     try {
+      const token = await getAccessToken()
       const res = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Id': getUserId(),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           question,
@@ -143,6 +143,4 @@ export const api = {
   getChatSessionMessages: (id) => request(`/chat/sessions/${id}/messages`),
   deleteChatSession: (id) => request(`/chat/sessions/${id}`, { method: 'DELETE' }),
   deleteAllChatSessions: () => request('/chat/sessions', { method: 'DELETE' }),
-
-  getUserId,
 }

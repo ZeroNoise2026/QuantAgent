@@ -5,6 +5,9 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# JWT secret for verifying Supabase Auth access tokens (legacy HS256).
+# Found in Dashboard → Project Settings → API → JWT Settings → JWT Secret.
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 MOONSHOT_API_KEY = os.getenv("MOONSHOT_API_KEY")
 MOONSHOT_BASE_URL = os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1")
