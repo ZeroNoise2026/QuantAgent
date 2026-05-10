@@ -51,7 +51,8 @@ export const api = {
    *   - `question`: user query
    *   - `opts.forceTicker`: string — explicit force-bind (e.g. from clarification chip)
    *   - `opts.contextTickers`: string[] — user's watchlist, fallback scope only
-   * Callbacks: onToken, onThinking, onStatus, onError, onDone, onClarification({question, options})
+   * Callbacks: onToken, onThinking, onStatus, onError, onDone,
+   *            onClarification({question, options}), onSession, onSources(items)
    * Returns an abort controller so the caller can cancel.
    */
   chatStream: async (question, opts = {}) => {
@@ -59,7 +60,7 @@ export const api = {
       forceTicker = null,
       contextTickers = [],
       sessionId = null,
-      onToken, onThinking, onStatus, onError, onDone, onClarification, onSession,
+      onToken, onThinking, onStatus, onError, onDone, onClarification, onSession, onSources,
     } = opts
     const controller = new AbortController()
     try {
@@ -118,6 +119,7 @@ export const api = {
                 } catch { onClarification?.({ question, options: [] }) }
               }
               else if (parsed.type === 'session') onSession?.(parsed)
+              else if (parsed.type === 'sources') onSources?.(parsed.items || [])
               else onToken?.(parsed.text || data)
             } catch { onToken?.(data) }
           }

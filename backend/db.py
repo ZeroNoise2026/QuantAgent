@@ -11,7 +11,7 @@ from config import SUPABASE_URL, SUPABASE_KEY
 logger = logging.getLogger(__name__)
 _client: Optional[Client] = None
 
-FIELDS_DOCUMENTS = "id, content, ticker, date, source, doc_type, section, title"
+FIELDS_DOCUMENTS = "id, content, ticker, date, source, doc_type, section, title, url"
 
 
 def get_client() -> Client:
@@ -317,7 +317,7 @@ def list_chat_messages(session_id: str) -> list[dict]:
     client = get_client()
     return (
         client.table("chat_messages")
-        .select("role, content, tickers, created_at")
+        .select("id, role, content, tickers, sources, created_at")
         .eq("session_id", session_id)
         .order("created_at", desc=False)
         .execute()
@@ -330,17 +330,31 @@ def append_chat_message(
     role: str,
     content: str,
     tickers: Optional[list[str]] = None,
-) -> None:
-    """Append a message. The bump_chat_session DB trigger updates last_message_at /
-    message_count / tickers atomically (see migrations/001c_session_bump_trigger.sql).
+    sources: Optional[list[dict]] = None,
+) -> Optional[int]:
+    """Append a message; returns the inserted row's id (BIGSERIAL) or None on failure.
+
+    `sources` is the citation payload (JSONB array) emitted by the
+    question-service `sources` SSE event. Pass None or [] for user messages
+    and for pre-citation history (left as NULL in DB).
+
+    The bump_chat_session DB trigger updates last_message_at / message_count /
+    tickers atomically (see migrations/001c_session_bump_trigger.sql).
     """
     client = get_client()
-    client.table("chat_messages").insert({
+    row: dict = {
         "session_id": session_id,
         "role": role,
         "content": content,
         "tickers": tickers or [],
-    }).execute()
+    }
+    if sources is not None:
+        row["sources"] = sources
+    resp = client.table("chat_messages").insert(row).execute()
+    rows = resp.data or []
+    if not rows:
+        return None
+    return rows[0].get("id")
 
 
 def delete_chat_session(user_id: str, session_id: str) -> None:
