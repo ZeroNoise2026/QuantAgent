@@ -1,8 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api } from '../api'
 import { relativeTime } from '../utils/date'
+import { useUiState } from '../utils/uiState'
+import ChatComposer from '../components/ChatComposer'
+import FilePreviewModal from '../components/FilePreviewModal'
+import FilesPanel from '../components/FilesPanel'
+import { Icon } from '../components/Icon'
 
 /**
  * Citation block shown under each assistant reply.
@@ -77,8 +83,19 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState([])
   const [currentSessionId, setCurrentSessionId] = useState(null)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState([])
+  const [previewFile, setPreviewFile] = useState(null)
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0)
+  const [sidebarCollapsed] = useUiState('sidebarCollapsed')
+  const [sidebarSlot, setSidebarSlot] = useState(null)
   const bottomRef = useRef(null)
   const timerRef = useRef(null)
+
+  // Locate the sidebar slot. Re-runs whenever sidebar collapse state changes
+  // (slot only exists when sidebar is expanded).
+  useEffect(() => {
+    setSidebarSlot(document.getElementById('sidebar-extra-slot'))
+  }, [sidebarCollapsed])
 
   useEffect(() => {
     api.getWatchlist()
@@ -152,18 +169,6 @@ export default function ChatPage() {
       refreshSessions()
     } catch (err) {
       alert('Failed to delete: ' + err.message)
-    }
-  }
-
-  const clearAll = async () => {
-    if (!confirm('Delete ALL chat sessions? This cannot be undone.')) return
-    try {
-      await api.deleteAllChatSessions()
-      setCurrentSessionId(null)
-      setMessages([])
-      setSessions([])
-    } catch (err) {
-      alert('Failed: ' + err.message)
     }
   }
 
@@ -281,109 +286,48 @@ export default function ChatPage() {
 
   return (
     <div style={{ display: 'flex', height: '100%', gap: 12 }}>
-      {/* Left panel: session list */}
-      <div className="chat-sessions" style={{
-        width: 240,
-        flexShrink: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#18181b',
-        border: '1px solid #27272a',
-        borderRadius: 12,
-        overflow: 'hidden',
-      }}>
-        <div style={{ padding: 12, borderBottom: '1px solid #27272a' }}>
+      {/* Sessions list — portaled into Sidebar's slot when available. */}
+      {sidebarSlot && createPortal(
+        <div className="sb-sessions">
           <button
+            type="button"
+            className="sb-new-chat"
             onClick={newChat}
             disabled={loading}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              background: '#3b82f6',
-              color: '#fff',
-              fontSize: '0.85rem',
-              borderRadius: 8,
-              border: 'none',
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}
           >
-            + New chat
+            <Icon name="plus" size={14} />
+            <span>New chat</span>
           </button>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-          {sessions.length === 0 ? (
-            <div style={{ padding: 12, color: '#52525b', fontSize: '0.75rem', textAlign: 'center' }}>
-              No chats yet
-            </div>
-          ) : sessions.map(s => (
-            <div
-              key={s.id}
-              onClick={() => loadSession(s.id)}
-              className="session-item"
-              style={{
-                padding: '8px 10px',
-                marginBottom: 2,
-                borderRadius: 6,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                background: s.id === currentSessionId ? '#27272a' : 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 6,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: '0.8rem',
-                  color: s.id === currentSessionId ? '#fff' : '#d4d4d8',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
-                  {s.title || 'Untitled'}
-                </div>
-                <div style={{ fontSize: '0.68rem', color: '#71717a', marginTop: 2 }}>
-                  {relativeTime(s.last_message_at)} · {s.message_count || 0}
-                </div>
-              </div>
-              <button
-                onClick={(e) => deleteSession(s.id, e)}
-                title="Delete"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#71717a',
-                  cursor: 'pointer',
-                  padding: '4px 6px',
-                  fontSize: '0.9rem',
-                  opacity: 0.6,
-                }}
+
+          <div className="sb-sessions-title">Recent</div>
+
+          <div className="sb-sessions-list">
+            {sessions.length === 0 ? (
+              <div className="sb-sessions-empty">No chats yet</div>
+            ) : sessions.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => loadSession(s.id)}
+                className={`sb-session${s.id === currentSessionId ? ' active' : ''}`}
               >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        {sessions.length > 0 && (
-          <div style={{ padding: 8, borderTop: '1px solid #27272a' }}>
-            <button
-              onClick={clearAll}
-              style={{
-                width: '100%',
-                padding: '6px',
-                background: 'transparent',
-                color: '#71717a',
-                fontSize: '0.7rem',
-                border: '1px solid #3f3f46',
-                borderRadius: 6,
-                cursor: 'pointer',
-              }}
-            >
-              Clear all
-            </button>
+                <div className="sb-session-main">
+                  <div className="sb-session-title">{s.title || 'Untitled'}</div>
+                  <div className="sb-session-meta">
+                    {relativeTime(s.last_message_at)} · {s.message_count || 0}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => deleteSession(s.id, e)}
+                  title="Delete"
+                  aria-label="Delete chat"
+                  className="sb-session-del"
+                ><Icon name="trash" size={12} /></button>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>,
+        sidebarSlot
+      )}
 
       {/* Right panel: chat */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: 800, minWidth: 0 }}>
@@ -501,24 +445,30 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask about a stock or the market..."
-            style={{ flex: 1 }}
-            disabled={loading}
-          />
-          <button
-            onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
-            style={{ background: '#3b82f6', color: '#fff', padding: '8px 20px' }}
-          >
-            Send
-          </button>
-        </div>
+        <ChatComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={() => sendMessage()}
+          disabled={loading}
+          sessionId={currentSessionId}
+          attachedFiles={attachedFiles}
+          onAttach={(rec) => { setAttachedFiles((list) => [...list, rec]); setFilesRefreshKey((k) => k + 1) }}
+          onDetach={(rec) => setAttachedFiles((list) => list.filter((x) => x.id !== rec.id))}
+          onPreview={(rec) => setPreviewFile(rec)}
+        />
       </div>
+
+      <FilesPanel
+        refreshKey={filesRefreshKey}
+        onPreview={(rec) => setPreviewFile(rec)}
+        onRemove={(rec) => setAttachedFiles((list) => list.filter((x) => x.id !== rec.id))}
+      />
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </div>
   )
 }
