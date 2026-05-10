@@ -7,18 +7,18 @@ const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 if (!url || !key) {
-  // Fail loud at dev time rather than producing confusing 401s later.
-  // eslint-disable-next-line no-console
-  console.error(
-    '[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY. ' +
-      'Copy frontend/.env.example to frontend/.env.local and fill in.',
-  )
+    // Fail loud at dev time rather than producing confusing 401s later.
+    // eslint-disable-next-line no-console
+    console.error(
+        '[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY. ' +
+        'Copy frontend/.env.example to frontend/.env.local and fill in.',
+    )
 }
 
 export const supabase = createClient(url, key, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+    },
 })

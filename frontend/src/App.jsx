@@ -6,6 +6,7 @@ import BriefingPage from './pages/BriefingPage'
 import ChatPage from './pages/ChatPage'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
+import AuthCallbackPage from './pages/AuthCallbackPage'
 import ProtectedRoute from './auth/ProtectedRoute'
 import { useAuth } from './auth/AuthContext'
 
@@ -18,8 +19,8 @@ function AppShell({ children }) {
   // Map pathname → sidebar active id
   const activePage =
     location.pathname.startsWith('/watchlist') ? 'watchlist' :
-    location.pathname.startsWith('/chat')      ? 'chat' :
-    'briefing'
+      location.pathname.startsWith('/chat') ? 'chat' :
+        'briefing'
 
   const handleNavigate = (id) => {
     navigate(`/${id}`)
@@ -69,6 +70,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route
         path="/briefing"
         element={<ProtectedRoute><AppShell><BriefingPage /></AppShell></ProtectedRoute>}
