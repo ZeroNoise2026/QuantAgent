@@ -1,73 +1,66 @@
+import { useUiState } from '../utils/uiState'
+import { Icon } from './Icon'
+
 const NAV_ITEMS = [
-  { id: 'briefing', label: 'Daily Briefing', icon: '\u{1f4cb}' },
-  { id: 'watchlist', label: 'Watchlist', icon: '\u{2b50}' },
-  { id: 'chat', label: 'Chat', icon: '\u{1f4ac}' },
+  { id: 'briefing', label: 'Daily Briefing', icon: 'briefing' },
+  { id: 'watchlist', label: 'Watchlist', icon: 'star' },
+  { id: 'chat', label: 'Chat', icon: 'chat' },
 ]
 
 export default function Sidebar({ activePage, onNavigate, open = false, userEmail, onSignOut }) {
+  const [collapsed, setCollapsed] = useUiState('sidebarCollapsed')
+  const cls = `app-sidebar${open ? ' open' : ''}${collapsed ? ' collapsed' : ''}`
+
   return (
-    <nav className={`app-sidebar ${open ? 'open' : ''}`}>
-      <div style={{
-        padding: '0 20px 24px',
-        fontSize: '1.125rem',
-        fontWeight: 700,
-        color: '#3b82f6',
-        letterSpacing: '-0.025em',
-      }}>
-        QuantAgent
-      </div>
-      {NAV_ITEMS.map(item => (
+    <nav className={cls}>
+      <div className="sidebar-head">
+        {!collapsed && <span className="sidebar-brand">QuantAgent</span>}
         <button
-          key={item.id}
-          onClick={() => onNavigate(item.id)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '10px 20px',
-            background: activePage === item.id ? '#27272a' : 'transparent',
-            color: activePage === item.id ? '#fff' : '#a1a1aa',
-            borderRadius: 0,
-            fontSize: '0.875rem',
-            textAlign: 'left',
-          }}
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <span>{item.icon}</span>
-          {item.label}
+          <Icon name={collapsed ? 'chevronsRight' : 'chevronsLeft'} size={14} />
         </button>
-      ))}
-      <div style={{ flex: 1 }} />
-      {userEmail && (
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #27272a' }}>
-          <div style={{
-            color: '#a1a1aa',
-            fontSize: '0.72rem',
-            marginBottom: 6,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }} title={userEmail}>
-            {userEmail}
-          </div>
+      </div>
+
+      <div className="sidebar-nav">
+        {NAV_ITEMS.map((item) => (
           <button
-            onClick={onSignOut}
-            style={{
-              width: '100%',
-              background: 'transparent',
-              color: '#a1a1aa',
-              border: '1px solid #3f3f46',
-              fontSize: '0.78rem',
-              padding: '6px 10px',
-              textAlign: 'center',
-            }}
+            key={item.id}
+            type="button"
+            className={`sidebar-nav-item${activePage === item.id ? ' active' : ''}`}
+            onClick={() => onNavigate(item.id)}
+            title={collapsed ? item.label : undefined}
           >
-            Sign out
+            <span className="sidebar-nav-icon"><Icon name={item.icon} size={18} /></span>
+            {!collapsed && <span className="sidebar-nav-label">{item.label}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Page-specific slot. ChatPage portals session list here. Hidden when sidebar is collapsed. */}
+      {!collapsed && <div id="sidebar-extra-slot" className="sidebar-extra" />}
+
+      {userEmail && (
+        <div className="sidebar-user">
+          {!collapsed && (
+            <div className="sidebar-user-email" title={userEmail}>{userEmail}</div>
+          )}
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="sidebar-signout"
+            title="Sign out"
+          >
+            {collapsed
+              ? <Icon name="signOut" size={16} />
+              : <>Sign out</>}
           </button>
         </div>
       )}
-      <div style={{ padding: '12px 20px', fontSize: '0.75rem', color: '#52525b' }}>
-        v1.0
-      </div>
     </nav>
   )
 }

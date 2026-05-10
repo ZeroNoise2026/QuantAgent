@@ -142,5 +142,4 @@ export const api = {
   listChatSessions: () => request('/chat/sessions'),
   getChatSessionMessages: (id) => request(`/chat/sessions/${id}/messages`),
   deleteChatSession: (id) => request(`/chat/sessions/${id}`, { method: 'DELETE' }),
-  deleteAllChatSessions: () => request('/chat/sessions', { method: 'DELETE' }),
 }

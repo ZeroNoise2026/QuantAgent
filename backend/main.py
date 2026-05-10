@@ -30,6 +30,7 @@ import db
 import rag
 from auth import get_current_user
 from fetcher import fetch_context
+from files.routes import router as files_router
 from summarizer import generate_summary, generate_briefing
 
 logging.basicConfig(
@@ -53,6 +54,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Feature routers
+app.include_router(files_router)
 
 
 # ── Tickers ───────────────────────────────────────────────────
