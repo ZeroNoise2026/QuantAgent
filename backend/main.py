@@ -242,6 +242,10 @@ def chat_stream(body: ChatRequest, x_user_id: str = Header(None)):
         yield f"data: {_json.dumps({'type': 'session', 'id': session_id, 'is_new': is_new_session})}\n\n"
 
         assistant_buf: list[str] = []
+        # Citation payload from the upstream `sources` SSE event. We capture
+        # it here so it can be persisted alongside the assistant message;
+        # the event itself is also forwarded to the browser for live render.
+        sources_buf: Optional[list[dict]] = None
         for raw_line in rag.stream_answer_sse(
             body.question,
             ticker=body.ticker,
@@ -261,12 +265,20 @@ def chat_stream(body: ChatRequest, x_user_id: str = Header(None)):
                     continue
                 if obj.get("type") == "token":
                     assistant_buf.append(obj.get("text") or "")
+                elif obj.get("type") == "sources":
+                    items = obj.get("items")
+                    if isinstance(items, list):
+                        sources_buf = items
 
         # Persist assistant message after the stream completes.
         final_text = "".join(assistant_buf).strip()
         if final_text:
             try:
-                db.append_chat_message(session_id, "assistant", final_text, tickers=tickers_hint)
+                db.append_chat_message(
+                    session_id, "assistant", final_text,
+                    tickers=tickers_hint,
+                    sources=sources_buf,
+                )
             except Exception as e:
                 logging.warning(f"Failed to persist assistant message: {e}")
 

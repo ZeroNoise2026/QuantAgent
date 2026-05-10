@@ -4,6 +4,70 @@ import remarkGfm from 'remark-gfm'
 import { api } from '../api'
 import { relativeTime } from '../utils/date'
 
+/**
+ * Citation block shown under each assistant reply.
+ *
+ * Accepts a uniform Source schema across all 3 retrieval paths:
+ *   {id, doc_type, ticker, date, title, url, label, similarity}
+ *
+ * Render rules:
+ *   - url present                  -> clickable anchor
+ *   - title present, no url        -> grey "<title> (no link)"
+ *   - else                         -> grey label
+ */
+function SourcesBlock({ items }) {
+  const [open, setOpen] = useState(false)
+  if (!Array.isArray(items) || items.length === 0) return null
+
+  return (
+    <div style={{ marginTop: 10, fontSize: '0.75rem' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          cursor: 'pointer',
+          color: '#a1a1aa',
+          userSelect: 'none',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        <span style={{ fontSize: '0.7rem' }}>{open ? '▾' : '▸'}</span>
+        📎 Sources ({items.length})
+      </div>
+      {open && (
+        <ol style={{ margin: '6px 0 0 0', paddingLeft: 22, color: '#a1a1aa', lineHeight: 1.5 }}>
+          {items.map((s, i) => (
+            <li key={s.id || i} style={{ marginBottom: 2 }}>
+              {s.url ? (
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#60a5fa', textDecoration: 'none' }}
+                >
+                  {s.title || s.label || s.id}
+                </a>
+              ) : s.title ? (
+                <span style={{ color: '#71717a' }}>
+                  {s.title} <span style={{ color: '#52525b' }}>(no link)</span>
+                </span>
+              ) : (
+                <span style={{ color: '#71717a' }}>{s.label || s.id}</span>
+              )}
+              {(s.ticker || s.date) && (
+                <span style={{ color: '#52525b', marginLeft: 6, fontSize: '0.7rem' }}>
+                  {s.ticker ? `· ${s.ticker}` : ''}{s.date ? ` · ${s.date}` : ''}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -59,6 +123,7 @@ export default function ChatPage() {
       setMessages(msgs.map(m => ({
         role: m.role,
         content: m.content,
+        sources: Array.isArray(m.sources) ? m.sources : null, // restore citation block
         streaming: false,
       })))
     } catch {
@@ -125,6 +190,17 @@ export default function ChatPage() {
       onSession: ({ id, is_new }) => {
         if (id && id !== currentSessionId) setCurrentSessionId(id)
         if (is_new) refreshSessions()
+      },
+      onSources: (items) => {
+        // Citation payload arrives once near the end of the stream. Attach
+        // it to the in-flight assistant message so SourcesBlock can render.
+        setMessages(prev => {
+          const updated = [...prev]
+          if (updated[msgIndex]) {
+            updated[msgIndex] = { ...updated[msgIndex], sources: items }
+          }
+          return updated
+        })
       },
       onStatus: (text) => {
         setMessages(prev => {
@@ -408,6 +484,9 @@ export default function ChatPage() {
                       <div style={{ marginTop: 6, fontSize: '0.7rem', color: '#52525b' }}>
                         ⏱ Took {msg.elapsed}s
                       </div>
+                    )}
+                    {msg.role === 'assistant' && !msg.streaming && Array.isArray(msg.sources) && msg.sources.length > 0 && (
+                      <SourcesBlock items={msg.sources} />
                     )}
                   </>
                 )}
