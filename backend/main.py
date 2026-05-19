@@ -20,11 +20,20 @@ Run:
 
 import logging
 import os
-from fastapi import FastAPI, Depends, HTTPException
+import sys
+from pathlib import Path
+from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
+
+# Make the repo-root `skills/` package importable from this backend.
+# ChatbotUI/backend is two levels deep; the repo root is its grandparent.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import db
 import rag
@@ -227,6 +236,56 @@ def chat_stream(body: ChatRequest, user_id: str = Depends(get_current_user)):
     def proxy_and_persist():
         # Announce session id so frontend can update its URL/state.
         yield f"data: {_json.dumps({'type': 'session', 'id': session_id, 'is_new': is_new_session})}\n\n"
+
+        # ── Skill routing ─────────────────────────────────────
+        # Before falling into the generic RAG flow, check whether the user
+        # message matches a registered skill (generate_report, compare_tickers,
+        # ...). On a match we emit the skill's output as token events so the
+        # frontend renders it the same way it renders a RAG answer.
+        #
+        # Any failure here (no API key, network blip, JSON parse error) lands
+        # in `skill = None` and the request falls through to RAG below.
+        try:
+            from skills import get_skill
+            from skills.router import route as _route_skill
+            decision = _route_skill(body.question)
+        except Exception as e:
+            logging.warning("Skill router failed; falling back to RAG: %s", e)
+            decision = None
+
+        if decision is not None and decision.skill:
+            logging.info("Routing to skill %r with args=%s",
+                         decision.skill, decision.args)
+            try:
+                result = get_skill(decision.skill).run(**decision.args)
+                content = result.content or ""
+                # Emit as a single token chunk — the frontend accumulator
+                # joins all token texts and treats it as the assistant
+                # message verbatim.
+                yield f"data: {_json.dumps({'type': 'token', 'text': content})}\n\n"
+                # Surface artifact paths to the user so they can find the
+                # saved report. Keep it short.
+                if result.artifacts:
+                    note = "\n\n_Saved: " + ", ".join(
+                        str(p) for p in result.artifacts
+                    ) + "_"
+                    yield f"data: {_json.dumps({'type': 'token', 'text': note})}\n\n"
+                yield "data: [DONE]\n\n"
+
+                # Persist the assistant message before returning.
+                final_text = content + (note if result.artifacts else "")
+                try:
+                    db.append_chat_message(
+                        session_id, "assistant", final_text,
+                        tickers=tickers_hint,
+                    )
+                except Exception as e:
+                    logging.warning(f"Failed to persist assistant message: {e}")
+                return
+            except Exception as e:
+                # Skill blew up — log it, then fall through to RAG so the
+                # user still gets *something* useful.
+                logging.exception("Skill %r raised: %s", decision.skill, e)
 
         assistant_buf: list[str] = []
         # Citation payload from the upstream `sources` SSE event. We capture
