@@ -5,3 +5,11 @@ python-dotenv
 openai
 requests
 pydantic
+pyjwt[crypto]>=2.8
+
+# File parsing (Phase 2)
+python-multipart>=0.0.9
+openpyxl>=3.1
+pypdf>=4.2
+python-docx>=1.1
+chardet>=5.2
